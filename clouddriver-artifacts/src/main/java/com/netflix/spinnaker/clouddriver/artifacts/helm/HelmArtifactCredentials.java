@@ -94,16 +94,9 @@ public class HelmArtifactCredentials implements ArtifactCredentials {
   }
 
   public InputStream download(Artifact artifact) throws IOException {
-    Request indexDownloadRequest = requestBuilder
-      .url(indexParser.indexPath())
-      .build();
-    Response indexDownloadResponse;
-    try {
-      indexDownloadResponse = okHttpClient.newCall(indexDownloadRequest).execute();
-    } catch (IOException e) {
-      throw new FailedDownloadException("Failed to download index.yaml file in " + indexParser.getRepository() + " repository");
-    }
-    List<String> urls = indexParser.findUrls(indexDownloadResponse.body().byteStream(), artifact.getName(), artifact.getVersion());
+    InputStream index = downloadIndex();
+
+    List<String> urls = indexParser.findUrls(index, artifact.getName(), artifact.getVersion());
     Response downloadResponse;
     for (String url : urls) {
       try {
@@ -117,6 +110,19 @@ public class HelmArtifactCredentials implements ArtifactCredentials {
       }
     }
     throw new FailedDownloadException("Unable to download the contents of artifact");
+  }
+
+  public InputStream downloadIndex() throws IOException {
+    Request indexDownloadRequest = requestBuilder
+      .url(indexParser.indexPath())
+      .build();
+    Response indexDownloadResponse;
+    try {
+      indexDownloadResponse = okHttpClient.newCall(indexDownloadRequest).execute();
+    } catch (IOException e) {
+      throw new FailedDownloadException("Failed to download index.yaml file in " + indexParser.getRepository() + " repository");
+    }
+    return indexDownloadResponse.body().byteStream();
   }
 
   public class FailedDownloadException extends IOException {
