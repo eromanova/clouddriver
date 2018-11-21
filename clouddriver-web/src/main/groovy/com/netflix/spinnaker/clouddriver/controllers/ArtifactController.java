@@ -20,17 +20,13 @@ package com.netflix.spinnaker.clouddriver.controllers;
 import com.netflix.spinnaker.clouddriver.artifacts.ArtifactCredentialsRepository;
 import com.netflix.spinnaker.clouddriver.artifacts.ArtifactDownloader;
 import com.netflix.spinnaker.clouddriver.artifacts.config.ArtifactCredentials;
-import com.netflix.spinnaker.clouddriver.artifacts.helm.HelmArtifactCredentials;
 import com.netflix.spinnaker.kork.artifacts.model.Artifact;
-import com.netflix.spinnaker.kork.web.exceptions.NotFoundException;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.IOUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
-import java.io.IOException;
-import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -69,59 +65,33 @@ public class ArtifactController {
   }
 
   @RequestMapping(method = RequestMethod.GET, value = "/{type}/account/{accountName}/names")
-  List<String> getNames(@PathVariable("type") String type,
+  List<String> getArtifactNames(@PathVariable("type") String type,
                         @PathVariable("accountName") String accountName) {
-    switch (type) {
-      case "helm":
-        return getHelmArtifactNames(accountName);
-      default:
-        throw new NotFoundException("Could not found artifact of type " + type);
+
+    ArtifactCredentials credentials = findArtifactCredentials(accountName);
+    if (!credentials.handlesType(type)) {
+      throw new IllegalArgumentException("Artifact credentials '" + accountName + "' cannot handle artifacts of type '" + type + "'");
     }
+    return credentials.getArtifactNames();
   }
 
   @RequestMapping(method = RequestMethod.GET, value = "/{type}/account/{accountName}/names/{artifactName}/versions")
-  List<String> getVersions(@PathVariable("type") String type,
+  List<String> getArtifactVersions(@PathVariable("type") String type,
                            @PathVariable("accountName") String accountName,
                            @PathVariable("artifactName") String artifactName) {
-    switch (type) {
-      case "helm":
-        return getHelmArtifactVersions(accountName, artifactName);
-      default:
-        throw new NotFoundException("Could not found artifact of type " + type);
-    }
-  }
 
-  private List<String> getHelmArtifactNames(String accountName) {
-    HelmArtifactCredentials helmArtifactCredentials = (HelmArtifactCredentials) findCredentials("helm/chart", accountName);
-    InputStream index;
-    List<String> names;
-    try {
-      index = helmArtifactCredentials.downloadIndex();
-      names = helmArtifactCredentials.getIndexParser().findNames(index);
-    } catch (IOException e) {
-      throw new NotFoundException("Failed to download chart names for " + accountName + " account");
+    ArtifactCredentials credentials = findArtifactCredentials(accountName);
+    if (!credentials.handlesType(type)) {
+      throw new IllegalArgumentException("Artifact credentials '" + accountName + "' cannot handle artifacts of type '" + type + "'");
     }
-    return names;
-  }
-
-  private List<String> getHelmArtifactVersions(String accountName, String artifactName) {
-    HelmArtifactCredentials helmArtifactCredentials = (HelmArtifactCredentials) findCredentials("helm/chart", accountName);
-    InputStream index;
-    List<String> versions;
-    try {
-      index = helmArtifactCredentials.downloadIndex();
-      versions = helmArtifactCredentials.getIndexParser().findVersions(index, artifactName);
-    } catch (IOException e) {
-      throw new NotFoundException("Failed to download chart versions for " + accountName + " account");
-    }
-    return versions;
+    return credentials.getArtifactVersions(artifactName);
   }
 
 
-  private ArtifactCredentials findCredentials(String type, String name) {
+  private ArtifactCredentials findArtifactCredentials(String name) {
     ArtifactCredentials artifactCredentials = artifactCredentialsRepository.getAllCredentials()
       .stream()
-      .filter(e -> e.handlesType(type) && e.getName().equals(name))
+      .filter(e -> e.getName().equals(name))
       .findFirst()
       .orElseThrow(() -> new IllegalArgumentException("No credentials with name '" + name + "' could be found."));
     return artifactCredentials;

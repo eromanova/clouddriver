@@ -21,6 +21,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.netflix.spinnaker.clouddriver.artifacts.config.ArtifactCredentials;
 import com.netflix.spinnaker.kork.artifacts.model.Artifact;
+import com.netflix.spinnaker.kork.web.exceptions.NotFoundException;
 import com.squareup.okhttp.OkHttpClient;
 import com.squareup.okhttp.Request;
 import com.squareup.okhttp.Request.Builder;
@@ -57,7 +58,7 @@ public class HelmArtifactCredentials implements ArtifactCredentials {
 
   @Override
   public boolean handlesType(String type) {
-    return type.equals("helm/chart");
+    return type.startsWith("helm");
   }
 
   public HelmArtifactCredentials(HelmArtifactAccount account, OkHttpClient okHttpClient) {
@@ -112,7 +113,7 @@ public class HelmArtifactCredentials implements ArtifactCredentials {
     throw new FailedDownloadException("Unable to download the contents of artifact");
   }
 
-  public InputStream downloadIndex() throws IOException {
+  private InputStream downloadIndex() throws IOException {
     Request indexDownloadRequest = requestBuilder
       .url(indexParser.indexPath())
       .build();
@@ -124,6 +125,33 @@ public class HelmArtifactCredentials implements ArtifactCredentials {
     }
     return indexDownloadResponse.body().byteStream();
   }
+
+  @Override
+  public List<String> getArtifactNames() {
+    InputStream index;
+    List<String> names;
+    try {
+      index = this.downloadIndex();
+      names = this.getIndexParser().findNames(index);
+    } catch (IOException e) {
+      throw new NotFoundException("Failed to download chart names for " + this.name + " account");
+    }
+    return names;
+  }
+
+  @Override
+  public List<String> getArtifactVersions(String artifactName) {
+    InputStream index;
+    List<String> versions;
+    try {
+      index = this.downloadIndex();
+      versions = this.getIndexParser().findVersions(index, artifactName);
+    } catch (IOException e) {
+      throw new NotFoundException("Failed to download chart versions for " + this.name + " account");
+    }
+    return versions;
+  }
+
 
   public class FailedDownloadException extends IOException {
     public FailedDownloadException(String message) {
